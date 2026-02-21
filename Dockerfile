@@ -54,4 +54,4 @@ COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 VOLUME /data
 EXPOSE 3005
 
-CMD ["sh", "-c", "node_modules/.bin/tsx packages/happy-server/sources/standalone.ts migrate && exec node_modules/.bin/tsx packages/happy-server/sources/standalone.ts serve"]
+CMD ["sh", "-c", "node_modules/.bin/tsx --tsconfig packages/happy-server/tsconfig.json packages/happy-server/sources/standalone.ts migrate && exec node_modules/.bin/tsx --tsconfig packages/happy-server/tsconfig.json packages/happy-server/sources/standalone.ts serve"]

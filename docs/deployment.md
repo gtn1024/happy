@@ -2,6 +2,13 @@
 
 This document describes how to deploy the Happy backend (`packages/happy-server`) and the infrastructure it expects.
 
+## Deployment Options
+
+Happy Server supports two deployment modes:
+
+1. **Standalone mode** (default): Uses embedded PGlite database and local file storage. Suitable for single-server deployments.
+2. **Production mode**: Uses external PostgreSQL, Redis, and S3-compatible storage. Suitable for scalable, multi-instance deployments.
+
 ## Runtime overview
 - **App server:** Node.js running `tsx ./sources/main.ts` (Fastify + Socket.IO).
 - **Database:** Postgres via Prisma.
@@ -68,8 +75,77 @@ The server package includes scripts for local infrastructure:
 
 Use `.env`/`.env.dev` to load local settings when running `yarn workspace happy-server dev`.
 
+## Production Deployment with External Databases
+
+### Using Docker Compose
+
+A production-ready `docker-compose.production.yml` is provided that uses external PostgreSQL and Redis:
+
+```yaml
+version: '3.8'
+services:
+  happy-server:
+    image: your-registry/happy-server:latest
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/happy-server
+      - REDIS_URL=redis://redis:6379
+      - HANDY_MASTER_SECRET=${HANDY_MASTER_SECRET}
+      - PORT=3005
+      - PGLITE_DIR=  # Important: unset to use external DB
+    command:
+      - sh
+      - -c
+      - |
+        export PGLITE_DIR=""
+        exec node_modules/.bin/tsx --tsconfig packages/happy-server/tsconfig.json packages/happy-server/sources/main.ts
+    depends_on:
+      - postgres
+      - redis
+```
+
+### Database Priority
+
+The server prioritizes database connections as follows:
+
+1. If `DATABASE_URL` is set → uses external PostgreSQL via standard Prisma client
+2. If `PGLITE_DIR` is set → uses embedded PGlite database
+3. Otherwise → defaults to standard Prisma client (requires `DATABASE_URL`)
+
+**Important**: The Docker image sets `PGLITE_DIR=/data/pglite` by default. When using external PostgreSQL, you must explicitly unset this variable in your docker-compose command or use an entrypoint script.
+
+### Database Migrations
+
+For external PostgreSQL:
+```bash
+# Run migrations manually
+docker-compose exec happy-server sh -c "cd packages/happy-server && npx prisma migrate deploy"
+```
+
+For PGlite (standalone mode):
+```bash
+# Migrations are applied automatically via standalone.ts migrate command
+docker-compose exec happy-server node_modules/.bin/tsx packages/happy-server/sources/standalone.ts migrate
+```
+
+### PostgreSQL 18+ Volume Configuration
+
+PostgreSQL 18 changed its data directory structure. Mount `/var/lib/postgresql` instead of `/var/lib/postgresql/data`:
+
+```yaml
+postgres:
+  image: postgres:18
+  volumes:
+    - postgres_data:/var/lib/postgresql  # Not /var/lib/postgresql/data
+```
+
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`
-- Dockerfile: `Dockerfile.server`
+- Standalone mode: `packages/happy-server/sources/standalone.ts`
+- Database client: `packages/happy-server/sources/storage/db.ts`
+- Dockerfile: `Dockerfile` (standalone), `Dockerfile.production` (external services)
+- Production compose: `docker-compose.production.yml`
 - Kubernetes manifests: `packages/happy-server/deploy`
 - Env usage: `packages/happy-server/sources` (`rg -n "process.env"`)

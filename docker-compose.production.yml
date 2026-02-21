@@ -1,0 +1,52 @@
+# Production docker-compose configuration for happy-server
+# Uses external PostgreSQL and Redis instead of embedded PGlite
+
+version: '3.8'
+
+services:
+  happy-server:
+    image: crpi-s5kq75kvbv0rkkxc.cn-hangzhou.personal.cr.aliyuncs.com/gtn1024/happy-server:latest
+    ports:
+      - "3005:3005"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/happy-server
+      - REDIS_URL=redis://redis:6379
+      - HANDY_MASTER_SECRET=${HANDY_MASTER_SECRET}
+      - PORT=3005
+      - PGLITE_DIR=
+    # Override the default command to ensure PGLITE_DIR is unset
+    command:
+      - sh
+      - -c
+      - |
+        export PGLITE_DIR=""
+        exec node_modules/.bin/tsx --tsconfig packages/happy-server/tsconfig.json packages/happy-server/sources/main.ts
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:18
+    environment:
+      - POSTGRES_DB=happy-server
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      # Note: PostgreSQL 18+ requires mounting /var/lib/postgresql instead of /var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

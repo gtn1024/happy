@@ -20,11 +20,47 @@ crypto.subtle.importKey = function (format: any, keyData: any, algorithm: any, e
 import * as fs from "fs";
 import * as path from "path";
 import { createPGlite } from "./storage/pgliteLoader";
+import { execSync } from "child_process";
 
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
 
 async function migrate() {
+    // If DATABASE_URL is set, use Prisma's standard migration tool
+    if (process.env.DATABASE_URL) {
+        console.log("Migrating external PostgreSQL database...");
+        try {
+            // Find prisma schema location
+            const schemaCandidates = [
+                path.join(process.cwd(), "packages", "happy-server", "prisma", "schema.prisma"),
+                path.join(process.cwd(), "prisma", "schema.prisma"),
+            ];
+            let schemaPath = "";
+            for (const candidate of schemaCandidates) {
+                if (fs.existsSync(candidate)) {
+                    schemaPath = candidate;
+                    break;
+                }
+            }
+            if (!schemaPath) {
+                console.error("Could not find prisma/schema.prisma");
+                process.exit(1);
+            }
+
+            // Run prisma migrate deploy
+            execSync(`npx prisma migrate deploy --schema=${schemaPath}`, {
+                stdio: "inherit",
+                env: { ...process.env }
+            });
+            console.log("Database migration completed successfully.");
+        } catch (e: any) {
+            console.error(`Migration failed: ${e.message}`);
+            process.exit(1);
+        }
+        return;
+    }
+
+    // Otherwise, use PGlite with manual migration
     console.log(`Migrating database in ${pgliteDir}...`);
     fs.mkdirSync(pgliteDir, { recursive: true });
 

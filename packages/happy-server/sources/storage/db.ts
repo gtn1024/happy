@@ -37,6 +37,12 @@ function findPGliteWasm(): { wasmModule: WebAssembly.Module; fsBundle: Blob } | 
 }
 
 function createClient(): PrismaClient {
+    // If DATABASE_URL is set, use standard PostgreSQL client (ignore PGLITE_DIR)
+    if (process.env.DATABASE_URL) {
+        return new PrismaClient();
+    }
+    
+    // Otherwise, use PGlite if PGLITE_DIR is set
     const pgliteDir = process.env.PGLITE_DIR;
     if (pgliteDir) {
         const wasmOpts = findPGliteWasm();
